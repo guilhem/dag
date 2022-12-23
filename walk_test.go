@@ -6,8 +6,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/hashicorp/terraform/internal/tfdiags"
 )
 
 func TestWalker_basic(t *testing.T) {
@@ -70,10 +68,10 @@ func TestWalker_error(t *testing.T) {
 	recordF := walkCbRecord(&order)
 
 	// Build a callback that delays until we close a channel
-	cb := func(v Vertex) tfdiags.Diagnostics {
+	cb := func(v Vertex) []error {
 		if v == 2 {
-			var diags tfdiags.Diagnostics
-			diags = diags.Append(fmt.Errorf("error"))
+			var diags []error
+			diags = append(diags, fmt.Errorf("error"))
 			return diags
 		}
 
@@ -108,7 +106,7 @@ func TestWalker_newVertex(t *testing.T) {
 
 	// Build a callback that notifies us when 2 has been walked
 	var w *Walker
-	cb := func(v Vertex) tfdiags.Diagnostics {
+	cb := func(v Vertex) []error {
 		if v == 2 {
 			defer close(done2)
 		}
@@ -153,7 +151,7 @@ func TestWalker_removeVertex(t *testing.T) {
 	recordF := walkCbRecord(&order)
 
 	var w *Walker
-	cb := func(v Vertex) tfdiags.Diagnostics {
+	cb := func(v Vertex) []error {
 		if v == 1 {
 			g.Remove(2)
 			w.Update(&g)
@@ -189,7 +187,7 @@ func TestWalker_newEdge(t *testing.T) {
 	recordF := walkCbRecord(&order)
 
 	var w *Walker
-	cb := func(v Vertex) tfdiags.Diagnostics {
+	cb := func(v Vertex) []error {
 		// record where we are first, otherwise the Updated vertex may get
 		// walked before the first visit.
 		diags := recordF(v)
@@ -240,7 +238,7 @@ func TestWalker_removeEdge(t *testing.T) {
 	// this test will timeout.
 	var w *Walker
 	gateCh := make(chan struct{})
-	cb := func(v Vertex) tfdiags.Diagnostics {
+	cb := func(v Vertex) []error {
 		t.Logf("visit vertex %#v", v)
 		switch v {
 		case 1:
@@ -261,8 +259,8 @@ func TestWalker_removeEdge(t *testing.T) {
 				t.Logf("vertex 3 gate channel is now closed")
 			case <-time.After(500 * time.Millisecond):
 				t.Logf("vertex 3 timed out waiting for the gate channel to close")
-				var diags tfdiags.Diagnostics
-				diags = diags.Append(fmt.Errorf("timeout 3 waiting for 2"))
+				var diags []error
+				diags = append(diags, fmt.Errorf("timeout 3 waiting for 2"))
 				return diags
 			}
 		}
@@ -275,8 +273,8 @@ func TestWalker_removeEdge(t *testing.T) {
 	w.Update(&g)
 
 	// Wait
-	if diags := w.Wait(); diags.HasErrors() {
-		t.Fatalf("unexpected errors: %s", diags.Err())
+	if diags := w.Wait(); len(diags) != 0 {
+		t.Fatalf("unexpected errors: %s", diags)
 	}
 
 	// Check
@@ -289,7 +287,7 @@ func TestWalker_removeEdge(t *testing.T) {
 // walkCbRecord is a test helper callback that just records the order called.
 func walkCbRecord(order *[]interface{}) WalkFunc {
 	var l sync.Mutex
-	return func(v Vertex) tfdiags.Diagnostics {
+	return func(v Vertex) []error {
 		l.Lock()
 		defer l.Unlock()
 		*order = append(*order, v)
